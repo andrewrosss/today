@@ -1,0 +1,6 @@
+#!/bin/bash
+TODO_HOME="$HOME/Desktop"
+TODAY_FILE="$TODO_HOME/todo-$( date "+%Y-%m-%d" )-todo.txt"
+PREVIOUS_FILE="$( ~/bin/previous )"
+echo "${PREVIOUS_FILE}...${TODAY_FILE}"
+diff -U0 "$PREVIOUS_FILE" "$TODAY_FILE" | grep -v ^@@
