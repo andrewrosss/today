@@ -1,12 +1,24 @@
-#!/bin/bash
-TODO_HOME="$HOME/Desktop"
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# change these to match your setup
+SCRIPT_DIR="$HOME/.local/bin"
+TODO_HOME="$HOME/Documents/sandbox/meta-work-log/todo"
+
+echo2() { echo "$@" 1>&2; }
+
 TODAY="$( date "+%Y-%m-%d" )"
-TODAY_FILE="$TODO_HOME/todo-$TODAY-todo.txt"
-PREVIOUS_FILE="$( ~/bin/previous )"
-if [[ ! -f "$TODAY_FILE" ]]; then
-  cp "$PREVIOUS_FILE" "$TODAY_FILE"
+TODAY_FILE="$TODO_HOME/todo-$TODAY-todo.md"
+PREVIOUS_FILE="$( "$SCRIPT_DIR"/previous )"
+if [[ -f "$PREVIOUS_FILE" && ! -f "$TODAY_FILE" ]]; then
+    cp "$PREVIOUS_FILE" "$TODAY_FILE"
+    sed -i '' -E "1s/^# [0-9]{4}-[0-9]{2}-[0-9]{2}/# $TODAY/" "$TODAY_FILE"
+elif [[ ! -f "$TODAY_FILE" ]]; then
+    printf "# %s\n" "${TODAY}" >> "$TODAY_FILE"
 fi
 report "$TODAY_FILE"
-printf "Press Enter to Continue, Ctrl-C to exit." && read -r PROMPT
-open "$TODAY_FILE"
-echo "$TODAY"
+echo2 ""
+echo2 "Today: $TODAY"
+
+echo "$TODAY_FILE"

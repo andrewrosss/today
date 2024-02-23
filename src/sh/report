@@ -1,6 +1,20 @@
-#!/bin/bash
-TODO_HOME="$HOME/Desktop"
-TODAY_FILE="$TODO_HOME/todo-$( date "+%Y-%m-%d" )-todo.txt"
-PREVIOUS_FILE="$( ~/bin/previous )"
-echo "${PREVIOUS_FILE}...${TODAY_FILE}"
-diff -U0 "$PREVIOUS_FILE" "$TODAY_FILE" | grep -v ^@@
+#!/usr/bin/env bash
+
+# we don't include `set -euo pipefail` because the `diff` command will
+# return a non-zero exit code if the files are different and we don't
+# want to exit in that case
+
+# change these to match your setup
+SCRIPT_DIR="$HOME/.local/bin"
+TODO_HOME="$HOME/Documents/sandbox/meta-work-log/todo"
+
+echo2() { echo "$@" 1>&2; }
+
+TODAY_FILE="$TODO_HOME/todo-$( date "+%Y-%m-%d" )-todo.md"
+PREVIOUS_FILE="$( "$SCRIPT_DIR"/previous )"
+if [[ -f "$PREVIOUS_FILE" && -f "$TODAY_FILE" ]]; then
+    echo2 "${PREVIOUS_FILE} -> ${TODAY_FILE}"
+    diff -U0 "$PREVIOUS_FILE" "$TODAY_FILE" | grep -v ^@@ 1>&2
+else
+    echo2 ". -> ${TODAY_FILE}"
+fi

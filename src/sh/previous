@@ -1,7 +1,13 @@
-#!/bin/bash
-TODO_HOME="$HOME/Desktop/"
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# change these to match your setup
+# SCRIPT_DIR="$HOME/.local/bin" # not used
+TODO_HOME="$HOME/Documents/sandbox/meta-work-log/todo"
+
 TODAYS_DATE="$( date "+%Y-%m-%d" )"
-MOST_RECENT="$( ls "$TODO_HOME"/todo-*-todo.txt | sed 's/^.*todo-//g' | sed 's/-todo.txt//g' ; echo "$TODAYS_DATE" | sort )"
+MOST_RECENT="$( { find "$TODO_HOME" -name "todo-*-todo.md" | sed 's/^.*todo-//g' | sed 's/-todo.md//g' ; echo "$TODAYS_DATE"; } | sort )"
 PREVIOUS="$( echo "$MOST_RECENT" | awk -- "BEGIN { YET=0 } /^$TODAYS_DATE/ { YET=1 } { if ( !YET ) PREV=\$0 } END { print( PREV ) }" )"
-PREVIOUS_FILE="$( echo "$TODO_HOME/todo-$PREVIOUS-todo.txt" )"
-echo "$( realpath "$PREVIOUS_FILE" )"
+PREVIOUS_FILE="$TODO_HOME/todo-$PREVIOUS-todo.md"
+realpath "$PREVIOUS_FILE"
