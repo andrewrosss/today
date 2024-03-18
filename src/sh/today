@@ -2,23 +2,52 @@
 
 set -euo pipefail
 
-# change these to match your setup
-SCRIPT_DIR="$HOME/.local/bin"
+# Script configuration
 TODO_HOME="$HOME/Documents/sandbox/meta-work-log/todo"
+TODAY="$(date "+%Y-%m-%d")"
+TODAY_FILE="$TODO_HOME/todo-$TODAY-todo.md"
 
+# Custom echo function for stderr
 echo2() { echo "$@" 1>&2; }
 
-TODAY="$( date "+%Y-%m-%d" )"
-TODAY_FILE="$TODO_HOME/todo-$TODAY-todo.md"
-PREVIOUS_FILE="$( "$SCRIPT_DIR"/previous )"
+# Find the most recent file
+MOST_RECENT="$( { find "$TODO_HOME" -name "todo-*-todo.md" | sed 's/^.*todo-//g' | sed 's/-todo.md//g' ; echo "$TODAY"; } | sort )"
+PREVIOUS="$( echo "$MOST_RECENT" | awk -- "BEGIN { YET=0 } /^$TODAY/ { YET=1 } { if ( !YET ) PREV=\$0 } END { print( PREV ) }" )"
+PREVIOUS_FILE="$TODO_HOME/todo-$PREVIOUS-todo.md"
+
+# Create today's file from the most recent if it doesn't exist
 if [[ -f "$PREVIOUS_FILE" && ! -f "$TODAY_FILE" ]]; then
     cp "$PREVIOUS_FILE" "$TODAY_FILE"
     sed -i '' -E "1s/^# [0-9]{4}-[0-9]{2}-[0-9]{2}/# $TODAY/" "$TODAY_FILE"
 elif [[ ! -f "$TODAY_FILE" ]]; then
-    printf "# %s\n" "${TODAY}" >> "$TODAY_FILE"
+    printf "# %s\n" "$TODAY" >> "$TODAY_FILE"
 fi
-report "$TODAY_FILE"
+
+# Reporting changes from the previous to today's file
+if [[ -f "$PREVIOUS_FILE" && -f "$TODAY_FILE" ]]; then
+    echo2 "${PREVIOUS_FILE} -> ${TODAY_FILE}"
+
+    # IMPORTANT: because the `diff` command will return a non-zero exit code if
+    # the files are different, we need to disable the `set -e` option so that
+    # the script doesn't exit when the `diff` command returns a non-zero exit
+    # code, which is normal when the files are different
+
+    set +e  # Disable exit on non-zero return
+    diff -U0 "$PREVIOUS_FILE" "$TODAY_FILE" | grep -v ^@@ 1>&2
+    DIFF_EXIT_CODE=$?
+    set -e  # Re-enable exit on non-zero return
+
+    # If the `diff` command returned a non-zero exit code that is not 1 (i.e.
+    # differences were found - this is expected behaviour), then an error
+    # occurred and we should exit with that code
+    if [[ $DIFF_EXIT_CODE -ne 0 && $DIFF_EXIT_CODE -ne 1 ]]; then
+        echo2 "An error occurred while comparing files."
+        exit $DIFF_EXIT_CODE
+    fi
+else
+    echo2 ". -> ${TODAY_FILE}"
+fi
+
 echo2 ""
 echo2 "Today: $TODAY"
-
 echo "$TODAY_FILE"
