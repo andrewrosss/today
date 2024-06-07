@@ -48,6 +48,9 @@ else
     echo2 ". -> ${TODAY_FILE}"
 fi
 
+GREEN="\x1b[38;5;42m"
+ENDCOLOR="\x1b[0m"
+
 echo2 ""
 echo2 "Today: $TODAY"
-echo "$TODAY_FILE"
+echo -e "${GREEN}${TODAY_FILE}${ENDCOLOR}"
