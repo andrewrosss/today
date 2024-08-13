@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,13 +14,81 @@ import (
 	"time"
 )
 
+var (
+	verboseMode      bool
+	showEntryDirMode bool
+	listEntriesMode  bool
+)
+
+func init() {
+	flag.BoolVar(&verboseMode, "v", false, "enable verbose mode")
+	flag.BoolVar(&showEntryDirMode, "e", false, "print the configured directory where entries are stored")
+	flag.BoolVar(&listEntriesMode, "l", false, "list all entries")
+	flag.Parse()
+}
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatalf("Error: %v", err)
+		os.Exit(1)
 	}
 }
 
 func run() error {
+	if showEntryDirMode && listEntriesMode {
+		return errors.New("-e and -l flags are mutually exclusive")
+	}
+
+	if !verboseMode {
+		log.SetOutput(io.Discard)
+	}
+
+	if showEntryDirMode {
+		return handleShowEntryDirMode()
+	} else if listEntriesMode {
+		return handleListEntries()
+	} else {
+		handleCreate()
+	}
+
+	return nil
+}
+
+func handleShowEntryDirMode() error {
+	config, err := initializeConfig()
+	if err != nil {
+		return fmt.Errorf("initializing config: %w", err)
+	}
+	fmt.Println(config.EntriesDir)
+	return nil
+}
+
+func handleListEntries() error {
+	config, err := initializeConfig()
+	if err != nil {
+		return fmt.Errorf("initializing config: %w", err)
+	}
+
+	// make sure the directory for entries exists
+	if err := os.MkdirAll(config.EntriesDir, 0755); err != nil {
+		return fmt.Errorf("creating entries directory (%s): %w", config.EntriesDir, err)
+	}
+
+	entryPaths, err := listEntryPaths(config.EntriesDir)
+	if err != nil {
+		return fmt.Errorf("listing entries in directory (%s): %w", config.EntriesDir, err)
+	}
+
+	slices.Sort(entryPaths)
+
+	for _, entryPath := range entryPaths {
+		fmt.Println(entryPath)
+	}
+
+	return nil
+}
+
+func handleCreate() error {
 	// bootstrap the config for the application
 	config, err := initializeConfig()
 	if err != nil {
@@ -26,7 +96,7 @@ func run() error {
 	}
 
 	// make sure the directory for entries exists
-	if err = os.MkdirAll(config.EntriesDir, 0755); err != nil {
+	if err := os.MkdirAll(config.EntriesDir, 0755); err != nil {
 		return fmt.Errorf("creating entries directory (%s): %w", config.EntriesDir, err)
 	}
 
@@ -145,7 +215,7 @@ func getTodayPath(entriesDir string) string {
 
 func createTodayFile(todayPath string) error {
 	heading := makeHeading(time.Now())
-	if err := os.WriteFile(todayPath, []byte(heading), 0664); err != nil {
+	if err := os.WriteFile(todayPath, []byte(heading), OS_ALL_R|OS_USER_RW); err != nil {
 		return err
 	}
 	return nil
@@ -153,7 +223,7 @@ func createTodayFile(todayPath string) error {
 
 func forwardPreviousFile(prevPath, todayPath string) error {
 	// Read the contents of the previous file
-	contentBytes, err := os.ReadFile(prevPath)
+	content, err := os.ReadFile(prevPath)
 	if err != nil {
 		return err
 	}
@@ -161,10 +231,10 @@ func forwardPreviousFile(prevPath, todayPath string) error {
 	// If the main header is a date, then replace it with today's date
 	re := regexp.MustCompile(`^# \d{4}-\d{2}-\d{2}\n`)
 	heading := makeHeading(time.Now())
-	contents := re.ReplaceAllString(string(contentBytes), heading)
+	contents := re.ReplaceAll(content, []byte(heading))
 
 	// Write the contents to today's file
-	if err = os.WriteFile(todayPath, []byte(contents), 0644); err != nil {
+	if err = os.WriteFile(todayPath, contents, OS_ALL_R|OS_USER_RW); err != nil {
 		return err
 	}
 
@@ -187,3 +257,37 @@ func expanduser(path string) (string, error) {
 
 	return filepath.Join(home, path[1:]), nil
 }
+
+// see: https://stackoverflow.com/a/42718395/2889677
+const (
+	OS_READ        = 04
+	OS_WRITE       = 02
+	OS_EX          = 01
+	OS_USER_SHIFT  = 6
+	OS_GROUP_SHIFT = 3
+	OS_OTH_SHIFT   = 0
+
+	OS_USER_R   = OS_READ << OS_USER_SHIFT
+	OS_USER_W   = OS_WRITE << OS_USER_SHIFT
+	OS_USER_X   = OS_EX << OS_USER_SHIFT
+	OS_USER_RW  = OS_USER_R | OS_USER_W
+	OS_USER_RWX = OS_USER_RW | OS_USER_X
+
+	OS_GROUP_R   = OS_READ << OS_GROUP_SHIFT
+	OS_GROUP_W   = OS_WRITE << OS_GROUP_SHIFT
+	OS_GROUP_X   = OS_EX << OS_GROUP_SHIFT
+	OS_GROUP_RW  = OS_GROUP_R | OS_GROUP_W
+	OS_GROUP_RWX = OS_GROUP_RW | OS_GROUP_X
+
+	OS_OTH_R   = OS_READ << OS_OTH_SHIFT
+	OS_OTH_W   = OS_WRITE << OS_OTH_SHIFT
+	OS_OTH_X   = OS_EX << OS_OTH_SHIFT
+	OS_OTH_RW  = OS_OTH_R | OS_OTH_W
+	OS_OTH_RWX = OS_OTH_RW | OS_OTH_X
+
+	OS_ALL_R   = OS_USER_R | OS_GROUP_R | OS_OTH_R
+	OS_ALL_W   = OS_USER_W | OS_GROUP_W | OS_OTH_W
+	OS_ALL_X   = OS_USER_X | OS_GROUP_X | OS_OTH_X
+	OS_ALL_RW  = OS_ALL_R | OS_ALL_W
+	OS_ALL_RWX = OS_ALL_RW | OS_GROUP_X
+)
