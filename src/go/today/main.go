@@ -14,38 +14,42 @@ import (
 	"time"
 )
 
-var (
-	verboseMode      bool
-	showEntryDirMode bool
-	listEntriesMode  bool
-)
-
-func init() {
-	flag.BoolVar(&verboseMode, "v", false, "enable verbose mode")
-	flag.BoolVar(&showEntryDirMode, "e", false, "print the configured directory where entries are stored")
-	flag.BoolVar(&listEntriesMode, "l", false, "list all entries")
-	flag.Parse()
-}
-
 func main() {
-	if err := run(); err != nil {
+	options := &Options{}
+	flagset := initializeFlagSet(options)
+	flagset.Parse(os.Args[1:])
+
+	if err := run(*options); err != nil {
 		log.Fatalf("Error: %v", err)
-		os.Exit(1)
 	}
 }
 
-func run() error {
-	if showEntryDirMode && listEntriesMode {
-		return errors.New("-e and -l flags are mutually exclusive")
+type Options struct {
+	Verbose        bool
+	ShowEntriesDir bool
+	ListEntries    bool
+}
+
+func initializeFlagSet(options *Options) *flag.FlagSet {
+	f := flag.NewFlagSet("today", flag.ExitOnError)
+	f.BoolVar(&options.Verbose, "v", false, "enable verbose mode")
+	f.BoolVar(&options.ShowEntriesDir, "e", false, "print the configured directory where entries are stored")
+	f.BoolVar(&options.ListEntries, "l", false, "list all entries")
+	return f
+}
+
+func run(options Options) error {
+	if options.ShowEntriesDir && options.ListEntries {
+		return errors.New("options -e and -l are mutually exclusive")
 	}
 
-	if !verboseMode {
+	if !options.Verbose {
 		log.SetOutput(io.Discard)
 	}
 
-	if showEntryDirMode {
-		return handleShowEntryDirMode()
-	} else if listEntriesMode {
+	if options.ShowEntriesDir {
+		return handleShowEntriesDir()
+	} else if options.ListEntries {
 		return handleListEntries()
 	} else {
 		handleCreate()
@@ -54,7 +58,7 @@ func run() error {
 	return nil
 }
 
-func handleShowEntryDirMode() error {
+func handleShowEntriesDir() error {
 	config, err := initializeConfig()
 	if err != nil {
 		return fmt.Errorf("initializing config: %w", err)
@@ -150,7 +154,7 @@ func configWithDefaults(appDir string) Config {
 func initializeConfig() (Config, error) {
 	appDir, err := getAppDir()
 	if err != nil {
-		// if we can't get the "today dir", we can't do anything ...
+		// if we can't get the app directory, we can't do anything ...
 		return Config{}, err
 	}
 	configPath := getConfigPath(appDir)
@@ -160,7 +164,7 @@ func initializeConfig() (Config, error) {
 			// ok if the file doesn't exist, we'll just use the defaults
 			return configWithDefaults(appDir), nil
 		}
-		// if it's not a "file not found" error, we _also_ can't do anything
+		// if it's not a "file not found" error, we _also_ probably can't do anything
 		return Config{}, err
 	}
 	defer configFile.Close()
@@ -189,7 +193,7 @@ func getConfigPath(appDir string) string {
 
 func getAppDir() (string, error) {
 	// user has set the TODAY_DIR environment variable so use that
-	appDir := os.Getenv("TODAY_DIR")
+	appDir := os.Getenv(ENV_APP_DIR)
 	if appDir != "" {
 		return appDir, nil
 	}
@@ -257,6 +261,8 @@ func expanduser(path string) (string, error) {
 
 	return filepath.Join(home, path[1:]), nil
 }
+
+const ENV_APP_DIR = "TODAY_DIR"
 
 // see: https://stackoverflow.com/a/42718395/2889677
 const (
