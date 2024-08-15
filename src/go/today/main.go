@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,9 +15,10 @@ import (
 )
 
 type Options struct {
-	Verbose        bool `arg:"-v" help:"enable verbose mode"`
-	ShowEntriesDir bool `arg:"-e, --entries-dir" help:"print the configured directory where entries are stored"`
-	ListEntries    bool `arg:"-l, --list" help:"list all entries"`
+	ShowEntriesDir bool   `arg:"-e,--entries-dir" help:"print the configured directory where entries are stored"`
+	ListEntries    bool   `arg:"-l,--list" help:"list all entries"`
+	EntriesDir     string `arg:"-d,--today-dir,env:TODAY_DIR"  help:"directory where entries are stored" placeholder:"PATH" default:"~/.today"`
+	Quiet          bool   `arg:"-q,env:TODAY_QUIET" help:"suppress logs written to STDERR"`
 }
 
 func main() {
@@ -31,48 +31,55 @@ func main() {
 }
 
 func run(options Options) error {
-	if options.ShowEntriesDir && options.ListEntries {
-		return errors.New("options -e and -l are mutually exclusive")
+	if err := validateOptions(options); err != nil {
+		return err
 	}
 
-	if !options.Verbose {
+	if options.Quiet {
 		log.SetOutput(io.Discard)
 	}
 
 	if options.ShowEntriesDir {
-		return handleShowEntriesDir()
+		return handleShowEntriesDir(options)
 	} else if options.ListEntries {
-		return handleListEntries()
+		return handleListEntries(options)
 	} else {
-		handleCreate()
+		handleCreate(options)
 	}
 
 	return nil
 }
 
-func handleShowEntriesDir() error {
-	config, err := initializeConfig()
-	if err != nil {
-		return fmt.Errorf("initializing config: %w", err)
+func validateOptions(options Options) error {
+	if options.ShowEntriesDir && options.ListEntries {
+		return errors.New("options -e and -l are mutually exclusive")
 	}
-	fmt.Println(config.EntriesDir)
 	return nil
 }
 
-func handleListEntries() error {
-	config, err := initializeConfig()
+func handleShowEntriesDir(options Options) error {
+	entriesDir, err := expanduser(options.EntriesDir)
 	if err != nil {
-		return fmt.Errorf("initializing config: %w", err)
+		return fmt.Errorf("invalid entries directory (%s): %w", options.EntriesDir, err)
+	}
+	fmt.Println(entriesDir)
+	return nil
+}
+
+func handleListEntries(options Options) error {
+	entriesDir, err := expanduser(options.EntriesDir)
+	if err != nil {
+		return fmt.Errorf("invalid entries directory (%s): %w", options.EntriesDir, err)
 	}
 
 	// make sure the directory for entries exists
-	if err := os.MkdirAll(config.EntriesDir, 0755); err != nil {
-		return fmt.Errorf("creating entries directory (%s): %w", config.EntriesDir, err)
+	if err := os.MkdirAll(entriesDir, 0755); err != nil {
+		return fmt.Errorf("creating entries directory (%s): %w", entriesDir, err)
 	}
 
-	entryPaths, err := listEntryPaths(config.EntriesDir)
+	entryPaths, err := listEntryPaths(entriesDir)
 	if err != nil {
-		return fmt.Errorf("listing entries in directory (%s): %w", config.EntriesDir, err)
+		return fmt.Errorf("listing entries in directory (%s): %w", entriesDir, err)
 	}
 
 	slices.Sort(entryPaths)
@@ -84,16 +91,15 @@ func handleListEntries() error {
 	return nil
 }
 
-func handleCreate() error {
-	// bootstrap the config for the application
-	config, err := initializeConfig()
+func handleCreate(options Options) error {
+	entriesDir, err := expanduser(options.EntriesDir)
 	if err != nil {
-		return fmt.Errorf("initializing config: %w", err)
+		return fmt.Errorf("invalid entries directory (%s): %w", options.EntriesDir, err)
 	}
 
 	// make sure the directory for entries exists
-	if err := os.MkdirAll(config.EntriesDir, 0755); err != nil {
-		return fmt.Errorf("creating entries directory (%s): %w", config.EntriesDir, err)
+	if err := os.MkdirAll(entriesDir, 0755); err != nil {
+		return fmt.Errorf("creating entries directory (%s): %w", entriesDir, err)
 	}
 
 	// find the entry/file for the most recent day, either:
@@ -101,12 +107,12 @@ func handleCreate() error {
 	// - it does exist and it's not today, so we find the penultimate day's
 	//   entry/file and copy the contents to today's entry
 	// - it does exist and it's today, do nothing
-	entryPaths, err := listEntryPaths(config.EntriesDir)
+	entryPaths, err := listEntryPaths(entriesDir)
 	if err != nil {
-		return fmt.Errorf("listing entries in directory (%s): %w", config.EntriesDir, err)
+		return fmt.Errorf("listing entries in directory (%s): %w", entriesDir, err)
 	}
 
-	todayPath := getTodayPath(config.EntriesDir)
+	todayPath := getTodayPath(entriesDir)
 
 	// sort the entries so we can easily find the most recent one
 	slices.Sort(entryPaths)
@@ -132,74 +138,6 @@ func handleCreate() error {
 	return nil
 }
 
-type Config struct {
-	// The directory where the entries are stored
-	EntriesDir string `json:"entries_dir"`
-}
-
-func configWithDefaults(appDir string) Config {
-	return Config{
-		EntriesDir: filepath.Join(appDir, "entries"),
-	}
-}
-
-func initializeConfig() (Config, error) {
-	appDir, err := getAppDir()
-	if err != nil {
-		// if we can't get the app directory, we can't do anything ...
-		return Config{}, err
-	}
-	configPath := getConfigPath(appDir)
-	configFile, err := os.Open(configPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// ok if the file doesn't exist, we'll just use the defaults
-			return configWithDefaults(appDir), nil
-		}
-		// if it's not a "file not found" error, we _also_ probably can't do anything
-		return Config{}, err
-	}
-	defer configFile.Close()
-
-	var config Config
-	if err = json.NewDecoder(configFile).Decode(&config); err != nil {
-		// at this point the file _does_ exist, but we can't parse it.
-		// the user should probably know about this, so we'll return the error
-		return Config{}, err
-	}
-
-	// fully resolve the entries directory
-	entriesDir, err := expanduser(config.EntriesDir)
-	if err != nil {
-		return Config{}, err
-	}
-	config.EntriesDir = entriesDir
-
-	return config, nil
-}
-
-func getConfigPath(appDir string) string {
-	configFile := filepath.Join(appDir, "config.json")
-	return configFile
-}
-
-func getAppDir() (string, error) {
-	// user has set the TODAY_DIR environment variable so use that
-	appDir := os.Getenv(ENV_APP_DIR)
-	if appDir != "" {
-		return appDir, nil
-	}
-
-	// otherwise use the default
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	appDir = filepath.Join(home, ".today")
-
-	return appDir, nil
-}
-
 func listEntryPaths(entriesDir string) ([]string, error) {
 	return filepath.Glob(filepath.Join(entriesDir, "????-??-??.md"))
 }
@@ -219,18 +157,22 @@ func createTodayFile(todayPath string) error {
 
 func forwardPreviousFile(prevPath, todayPath string) error {
 	// Read the contents of the previous file
-	content, err := os.ReadFile(prevPath)
+	prevContent, err := os.ReadFile(prevPath)
 	if err != nil {
 		return err
 	}
 
 	// If the main header is a date, then replace it with today's date
 	re := regexp.MustCompile(`^# \d{4}-\d{2}-\d{2}\n`)
+	if !re.Match(prevContent) {
+		log.Println("Skipping update of previous entry's heading")
+		log.Println("Note: to automatically update the heading, the first line must be of the form '# YYYY-MM-DD'")
+	}
 	heading := makeHeading(time.Now())
-	contents := re.ReplaceAll(content, []byte(heading))
+	content := re.ReplaceAll(prevContent, []byte(heading))
 
 	// Write the contents to today's file
-	if err = os.WriteFile(todayPath, contents, OS_ALL_R|OS_USER_RW); err != nil {
+	if err = os.WriteFile(todayPath, content, OS_ALL_R|OS_USER_RW); err != nil {
 		return err
 	}
 
@@ -253,8 +195,6 @@ func expanduser(path string) (string, error) {
 
 	return filepath.Join(home, path[1:]), nil
 }
-
-const ENV_APP_DIR = "TODAY_DIR"
 
 // see: https://stackoverflow.com/a/42718395/2889677
 const (
