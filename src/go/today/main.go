@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -12,30 +11,23 @@ import (
 	"regexp"
 	"slices"
 	"time"
+
+	"github.com/alexflint/go-arg"
 )
 
-func main() {
-	options := &Options{}
-	flagset := initializeFlagSet(options)
-	flagset.Parse(os.Args[1:])
+type Options struct {
+	Verbose        bool `arg:"-v" help:"enable verbose mode"`
+	ShowEntriesDir bool `arg:"-e, --entries-dir" help:"print the configured directory where entries are stored"`
+	ListEntries    bool `arg:"-l, --list" help:"list all entries"`
+}
 
-	if err := run(*options); err != nil {
+func main() {
+	options := Options{}
+	arg.MustParse(&options)
+
+	if err := run(options); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
-}
-
-type Options struct {
-	Verbose        bool
-	ShowEntriesDir bool
-	ListEntries    bool
-}
-
-func initializeFlagSet(options *Options) *flag.FlagSet {
-	f := flag.NewFlagSet("today", flag.ExitOnError)
-	f.BoolVar(&options.Verbose, "v", false, "enable verbose mode")
-	f.BoolVar(&options.ShowEntriesDir, "e", false, "print the configured directory where entries are stored")
-	f.BoolVar(&options.ListEntries, "l", false, "list all entries")
-	return f
 }
 
 func run(options Options) error {
