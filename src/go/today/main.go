@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,56 +13,42 @@ import (
 	"github.com/alexflint/go-arg"
 )
 
+type Args struct {
+	ListEntries    *ListEntriesCmd    `arg:"subcommand:list" help:"list all entries"`
+	ShowEntriesDir *ShowEntriesDirCmd `arg:"subcommand:dir" help:"print the configured directory where entries are stored"`
+	Options
+}
+
+type ListEntriesCmd struct{}
+type ShowEntriesDirCmd struct{}
+
 type Options struct {
-	ShowEntriesDir bool   `arg:"-e,--entries-dir" help:"print the configured directory where entries are stored"`
-	ListEntries    bool   `arg:"-l,--list" help:"list all entries"`
-	EntriesDir     string `arg:"-d,--today-dir,env:TODAY_DIR"  help:"directory where entries are stored" placeholder:"PATH" default:"~/.today"`
-	Quiet          bool   `arg:"-q,env:TODAY_QUIET" help:"suppress logs written to STDERR"`
+	EntriesDir string `arg:"-d,--today-dir,env:TODAY_DIR"  help:"directory where entries are stored" placeholder:"PATH" default:"~/.today"`
+	Quiet      bool   `arg:"-q,env:TODAY_QUIET" help:"suppress logs written to STDERR"`
 }
 
 func main() {
-	options := Options{}
-	arg.MustParse(&options)
+	args := Args{}
+	arg.MustParse(&args)
 
-	if err := run(options); err != nil {
+	if err := run(args); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 }
 
-func run(options Options) error {
-	if err := validateOptions(options); err != nil {
-		return err
-	}
-
-	if options.Quiet {
+func run(args Args) error {
+	if args.Quiet {
 		log.SetOutput(io.Discard)
 	}
 
-	if options.ShowEntriesDir {
-		return handleShowEntriesDir(options)
-	} else if options.ListEntries {
-		return handleListEntries(options)
-	} else {
-		handleCreate(options)
+	switch {
+	case args.ListEntries != nil:
+		return handleListEntries(args.Options)
+	case args.ShowEntriesDir != nil:
+		return handleShowEntriesDir(args.Options)
+	default:
+		return handleCreate(args.Options)
 	}
-
-	return nil
-}
-
-func validateOptions(options Options) error {
-	if options.ShowEntriesDir && options.ListEntries {
-		return errors.New("options -e and -l are mutually exclusive")
-	}
-	return nil
-}
-
-func handleShowEntriesDir(options Options) error {
-	entriesDir, err := expanduser(options.EntriesDir)
-	if err != nil {
-		return fmt.Errorf("invalid entries directory (%s): %w", options.EntriesDir, err)
-	}
-	fmt.Println(entriesDir)
-	return nil
 }
 
 func handleListEntries(options Options) error {
@@ -88,6 +73,15 @@ func handleListEntries(options Options) error {
 		fmt.Println(entryPath)
 	}
 
+	return nil
+}
+
+func handleShowEntriesDir(options Options) error {
+	entriesDir, err := expanduser(options.EntriesDir)
+	if err != nil {
+		return fmt.Errorf("invalid entries directory (%s): %w", options.EntriesDir, err)
+	}
+	fmt.Println(entriesDir)
 	return nil
 }
 
