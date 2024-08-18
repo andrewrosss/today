@@ -33,6 +33,7 @@ type ShowEntriesDirCmd struct{}
 type Options struct {
 	EntriesDir string `arg:"-d,--today-dir,env:TODAY_DIR"  help:"directory where entries are stored" placeholder:"PATH" default:"~/.today"`
 	Quiet      bool   `arg:"-q,env:TODAY_QUIET" help:"suppress logs written to STDERR"`
+	ToStdout   bool   `arg:"--stdout" help:"write the contents of today's entry to STDOUT"`
 }
 
 func main() {
@@ -134,8 +135,17 @@ func handleCreate(options Options) error {
 		log.Println("Today's entry already exists")
 	}
 
-	// we always write the today's entry path to STDOUT
-	fmt.Println(todayPath)
+	if options.ToStdout {
+		// write today's entry's contents to STDOUT
+		content, err := os.ReadFile(todayPath)
+		if err != nil {
+			return fmt.Errorf("reading today's entry file (%s): %w", todayPath, err)
+		}
+		fmt.Print(string(content))
+	} else {
+		// write today's entry's path to STDOUT
+		fmt.Println(todayPath)
+	}
 
 	return nil
 }
