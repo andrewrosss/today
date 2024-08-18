@@ -1,7 +1,7 @@
 # Today
 
 ```bash
-go install github.com/andrewrosss/today/src/go/today@v0.2.1
+go install github.com/andrewrosss/today/src/go/today@v0.2.2
 ```
 
 ## Releasing a new version
