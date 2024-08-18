@@ -13,10 +13,18 @@ import (
 	"github.com/alexflint/go-arg"
 )
 
+const (
+	Version = "0.2.0"
+)
+
 type Args struct {
 	ListEntries    *ListEntriesCmd    `arg:"subcommand:list" help:"list all entries"`
 	ShowEntriesDir *ShowEntriesDirCmd `arg:"subcommand:dir" help:"print the configured directory where entries are stored"`
 	Options
+}
+
+func (Args) Version() string {
+	return fmt.Sprintf("today version %s", Version)
 }
 
 type ListEntriesCmd struct{}
