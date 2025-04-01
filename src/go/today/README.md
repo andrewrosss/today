@@ -24,7 +24,7 @@ Then bump the version with `bump2version`:
 # - the version number in git tag
 # - the version number in the README
 # - the version number/format of the new version's commit message
-pipx run bump2version --new-versio='x.y.z' fakepart
+pipx run bump2version --new-version='x.y.z' fakepart
 ```
 
 Then push the tags:
