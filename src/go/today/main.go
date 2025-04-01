@@ -31,9 +31,10 @@ type ListEntriesCmd struct{}
 type ShowEntriesDirCmd struct{}
 
 type Options struct {
-	EntriesDir string `arg:"-d,--today-dir,env:TODAY_DIR"  help:"directory where entries are stored" placeholder:"PATH" default:"~/.today"`
-	Quiet      bool   `arg:"-q,env:TODAY_QUIET" help:"suppress logs written to STDERR"`
-	ToStdout   bool   `arg:"--stdout" help:"write the contents of today's entry to STDOUT"`
+	EntriesDir        string `arg:"-d,--today-dir,env:TODAY_DIR" help:"directory where entries are stored" placeholder:"PATH" default:"~/.today"`
+	Quiet             bool   `arg:"-q,env:TODAY_QUIET" help:"suppress logs written to STDERR"`
+	ToStdout          bool   `arg:"--stdout" help:"write the contents of today's entry to STDOUT"`
+	DeclareBankruptcy *int   `arg:"-b,--declare-bankruptcy" help:"forward only the content in sections up to the specified level"`
 }
 
 func main() {
@@ -128,7 +129,10 @@ func handleCreate(options Options) error {
 		}
 	} else if prevPath := entryPaths[len(entryPaths)-1]; prevPath != todayPath {
 		log.Printf("Forwarding previous entry (%s) to today", prevPath)
-		if err = forwardPreviousFile(prevPath, todayPath); err != nil {
+		fwdOptions := ForwardingOptions{
+			DeclareBankruptcy: options.DeclareBankruptcy,
+		}
+		if err = forwardPreviousFile(prevPath, todayPath, fwdOptions); err != nil {
 			return fmt.Errorf("forwarding previous entry (%s) to today (%s): %w", prevPath, todayPath, err)
 		}
 	} else {
@@ -167,7 +171,7 @@ func createTodayFile(todayPath string) error {
 	return nil
 }
 
-func forwardPreviousFile(prevPath, todayPath string) error {
+func forwardPreviousFile(prevPath, todayPath string, options ForwardingOptions) error {
 	// Read the contents of the previous file
 	prevContent, err := os.ReadFile(prevPath)
 	if err != nil {
@@ -183,12 +187,24 @@ func forwardPreviousFile(prevPath, todayPath string) error {
 	heading := makeHeading(time.Now())
 	content := re.ReplaceAll(prevContent, []byte(heading))
 
+	if options.DeclareBankruptcy != nil {
+		// If the user specified a level, then we need to clear all lines
+		// in sections deeper than that level
+		log.Printf("Declaring bankruptcy for sections deeper than level %d", *options.DeclareBankruptcy)
+		content = UndergoBankruptcy(content, *options.DeclareBankruptcy)
+	}
+
 	// Write the contents to today's file
 	if err = os.WriteFile(todayPath, content, OS_ALL_R|OS_USER_RW); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// ForwardingOptions is a struct that contains options for forwarding
+type ForwardingOptions struct {
+	DeclareBankruptcy *int
 }
 
 func makeHeading(date time.Time) string {
