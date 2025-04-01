@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"log"
 	"regexp"
 	"unicode/utf8"
 )
@@ -39,7 +38,6 @@ func UndergoBankruptcy(prevContent []byte, maxLevel int) []byte {
 		if m := headerRegex.FindSubmatch(line); m != nil {
 			// header line - update the level
 			level = utf8.RuneCount(m[1])
-			log.Println("New header level:", level)
 			lines = append(lines, line)
 			continue
 		}
